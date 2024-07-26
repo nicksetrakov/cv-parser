@@ -2,13 +2,14 @@ import json
 import logging
 from enum import Enum
 from urllib.parse import quote, urlencode
-
-import requests
-from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from dataclasses import dataclass
 from typing import List, Optional
-
-from requests import RequestException
 
 
 @dataclass
@@ -22,12 +23,12 @@ class Resume:
 
 
 class SearchType(Enum):
-    SYNONYMS = ""  # З урахуванням синонімів
-    EVERYWHERE = "everywhere"  # По всьому тексту
-    SPECIALITY = "speciality"  # У назві резюме
-    EDUCATION = "education"  # В освіті
-    SKILLS = "skills"  # У ключових навичках
-    EXPERIENCE = "experience"  # У досвідві роботи
+    SYNONYMS = ""
+    EVERYWHERE = "everywhere"
+    SPECIALITY = "speciality"
+    EDUCATION = "education"
+    SKILLS = "skills"
+    EXPERIENCE = "experience"
 
 
 class City(Enum):
@@ -55,7 +56,7 @@ class PostingPeriod(Enum):
     THREE_DAYS = "ThreeDays"
     WEEK = "Week"
     MONTH = "Month"
-    THREE_MONTHS = ""  # Значение по умолчанию, не отправляется в запросе
+    THREE_MONTHS = ""
     YEAR = "Year"
     ALL_TIME = "All"
 
@@ -65,6 +66,12 @@ class ResumeParser:
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
         }
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        self.driver = webdriver.Chrome(service=ChromeService(), options=chrome_options)
+
+    def __del__(self):
+        self.driver.quit()
 
     def parse_work_ua(
         self,
@@ -81,40 +88,36 @@ class ResumeParser:
             "location": location if location else "",
         }
 
-        response = requests.get(base_url, params=params, headers=self.headers)
-        soup = BeautifulSoup(response.content, "html.parser")
+        full_url = f"{base_url}?{urlencode(params)}"
+        self.driver.get(full_url)
 
         resumes = []
-        for resume in soup.find_all("div", class_="resume-link"):
-            title = resume.find("a", class_="link-profile").text.strip()
-            url = (
-                "https://www.work.ua"
-                + resume.find("a", class_="link-profile")["href"]
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "div.resume-link"))
             )
+            resume_elements = self.driver.find_elements(By.CSS_SELECTOR, "div.resume-link")
 
-            exp = resume.find("span", class_="position-experience")
-            experience_years = int(exp.text.split()[0]) if exp else None
+            for resume in resume_elements:
+                title_element = resume.find_element(By.CSS_SELECTOR, "a.link-profile")
+                title = title_element.text.strip()
+                url = "https://www.work.ua" + title_element.get_attribute("href")
 
-            skills_elem = resume.find("div", class_="word-break")
-            skills_list = (
-                [skill.strip() for skill in skills_elem.text.split(",")]
-                if skills_elem
-                else []
-            )
+                exp_element = resume.find_element(By.CSS_SELECTOR, "span.position-experience")
+                experience_years = int(exp_element.text.split()[0]) if exp_element else None
 
-            location_elem = resume.find("span", class_="location")
-            location = location_elem.text.strip() if location_elem else ""
+                skills_element = resume.find_element(By.CSS_SELECTOR, "div.word-break")
+                skills_list = [skill.strip() for skill in skills_element.text.split(",")] if skills_element else []
 
-            salary_elem = resume.find("span", class_="salary")
-            salary = (
-                int(salary_elem.text.replace(" ", "")) if salary_elem else None
-            )
+                location_element = resume.find_element(By.CSS_SELECTOR, "span.location")
+                location = location_element.text.strip() if location_element else ""
 
-            resumes.append(
-                Resume(
-                    title, experience_years, skills_list, location, salary, url
-                )
-            )
+                salary_element = resume.find_element(By.CSS_SELECTOR, "span.salary")
+                salary = int(salary_element.text.replace(" ", "")) if salary_element else None
+
+                resumes.append(Resume(title, experience_years, skills_list, location, salary, url))
+        except Exception as e:
+            logging.error(f"Error while parsing work.ua: {str(e)}")
 
         return resumes
 
@@ -130,11 +133,7 @@ class ResumeParser:
         posting_period: PostingPeriod = PostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
 
-        position_url = (
-            quote(position.replace(" ", "-").lower())
-            if position != "all"
-            else "all"
-        )
+        position_url = quote(position.replace(" ", "-").lower()) if position != "all" else "all"
         base_url = f"https://robota.ua/candidates/{position_url}/{city.value}"
 
         params = {}
@@ -153,88 +152,42 @@ class ResumeParser:
             params["salary"] = json.dumps(salary_dict)
 
         if experience_levels:
-            params["experienceIds"] = json.dumps(
-                [level.value for level in experience_levels]
-            )
+            params["experienceIds"] = json.dumps([level.value for level in experience_levels])
 
         if posting_period != PostingPeriod.THREE_MONTHS:
             params["period"] = json.dumps(posting_period.value)
 
         full_url = f"{base_url}?{urlencode(params)}" if params else base_url
+
+        self.driver.get(full_url)
         print(full_url)
-
+        resumes = []
         try:
-            response = requests.get(full_url, headers=self.headers)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.content, "html.parser")
-            print(soup)
-            resumes = []
-            # Здесь нужно найти правильный селектор для списка резюме
-            for resume_element in soup.select(
-                "section.cv-card.ng-star-inserted"
-            ):
-                print(resume_element)
-                # Замените на правильный селектор
-                # Извлечение данных из каждого резюме
-                # Этот код нужно будет адаптировать под реальную структуру HTML
-                title = resume_element.find(
-                    "h2", class_="resume-title"
-                ).text.strip()  # Замените на правильный селектор
-                url = resume_element.find("a", class_="resume-link")[
-                    "href"
-                ]  # Замените на правильный селектор
 
-                experience_elem = resume_element.find(
-                    "span", class_="experience"
-                )  # Замените на правильный селектор
-                experience_years = (
-                    self.extract_experience(experience_elem.text)
-                    if experience_elem
-                    else None
-                )
+            resume_elements = self.driver.find_elements(By.CLASS_NAME, "cv-card.ng-star-inserted")
 
-                skills_elem = resume_element.find(
-                    "div", class_="skills"
-                )  # Замените на правильный селектор
-                skills_list = (
-                    [skill.strip() for skill in skills_elem.text.split(",")]
-                    if skills_elem
-                    else []
-                )
+            for resume in resume_elements:
+                title_element = resume.find_element(By.CSS_SELECTOR, "h2.resume-title")
+                title = title_element.text.strip()
+                url = title_element.find_element(By.CSS_SELECTOR, "a.resume-link").get_attribute("href")
 
-                location_elem = resume_element.find(
-                    "span", class_="location"
-                )  # Замените на правильный селектор
-                location = location_elem.text.strip() if location_elem else ""
+                experience_element = resume.find_element(By.CSS_SELECTOR, "span.experience")
+                experience_years = int(experience_element.text.split()[0]) if experience_element else None
 
-                salary_elem = resume_element.find(
-                    "span", class_="salary"
-                )  # Замените на правильный селектор
-                salary = (
-                    self.extract_salary(salary_elem.text)
-                    if salary_elem
-                    else None
-                )
+                skills_element = resume.find_element(By.CSS_SELECTOR, "div.skills")
+                skills_list = [skill.strip() for skill in skills_element.text.split(",")] if skills_element else []
 
-                resumes.append(
-                    Resume(
-                        title,
-                        experience_years,
-                        skills_list,
-                        location,
-                        salary,
-                        url,
-                    )
-                )
+                location_element = resume.find_element(By.CSS_SELECTOR, "span.location")
+                location = location_element.text.strip() if location_element else ""
 
-            return resumes
+                salary_element = resume.find_element(By.CSS_SELECTOR, "span.salary")
+                salary = int(salary_element.text.replace(" ", "")) if salary_element else None
 
-        except requests.RequestException as e:
-            logging.error(f"Error fetching data from robota.ua: {e}")
-            return []
+                resumes.append(Resume(title, experience_years, skills_list, location, salary, url))
         except Exception as e:
-            logging.error(f"Error parsing data from robota.ua: {e}")
-            return []
+            logging.error(f"Error while parsing robota.ua: {str(e)}")
+
+        return resumes
 
     def filter_resumes(
         self,
@@ -247,33 +200,16 @@ class ResumeParser:
         filtered_resumes = resumes
 
         if experience:
-            filtered_resumes = [
-                r
-                for r in filtered_resumes
-                if r.experience and r.experience >= experience
-            ]
+            filtered_resumes = [r for r in filtered_resumes if r.experience and r.experience >= experience]
 
         if skills:
-            filtered_resumes = [
-                r
-                for r in filtered_resumes
-                if all(
-                    skill.lower() in [s.lower() for s in r.skills]
-                    for skill in skills
-                )
-            ]
+            filtered_resumes = [r for r in filtered_resumes if all(skill.lower() in [s.lower() for s in r.skills] for skill in skills)]
 
         if location:
-            filtered_resumes = [
-                r
-                for r in filtered_resumes
-                if location.lower() in r.location.lower()
-            ]
+            filtered_resumes = [r for r in filtered_resumes if location.lower() in r.location.lower()]
 
         if salary:
-            filtered_resumes = [
-                r for r in filtered_resumes if r.salary and r.salary >= salary
-            ]
+            filtered_resumes = [r for r in filtered_resumes if r.salary and r.salary >= salary]
 
         return filtered_resumes
 
@@ -288,40 +224,29 @@ class ResumeParser:
     ) -> List[Resume]:
         try:
             if site == "work.ua":
-                resumes = self.parse_work_ua(
-                    position, experience, skills, location, salary
-                )
+                resumes = self.parse_work_ua(position, experience, skills, location, salary)
             elif site == "robota.ua":
-                resumes = self.parse_robota_ua(
-                    position, experience, skills, location, salary
-                )
+                resumes = self.parse_robota_ua(position, experience, skills, location, salary)
             else:
                 raise ValueError("Unsupported job site")
 
-            return self.filter_resumes(
-                resumes, experience, skills, location, salary
-            )
-        except RequestException as e:
-            logging.error(f"Error while fetching data from {site}: {str(e)}")
-            return []
+            return self.filter_resumes(resumes, experience, skills, location, salary)
         except Exception as e:
-            logging.error(
-                f"Unexpected error while parsing resumes from {site}: {str(e)}"
-            )
+            logging.error(f"Error while fetching data from {site}: {str(e)}")
             return []
 
 
 parser = ResumeParser()
 
-parser.parse_robota_ua(
+resumes = parser.parse_robota_ua(
     "python,django",
     search_type=SearchType.SKILLS,
     salary_from=3000,
     salary_to=30000,
-    experience_levels=[
-        ExperienceLevel.NO_EXPERIENCE,
-        ExperienceLevel.FROM_2_TO_5_YEARS,
-    ],
-    city=City.DNIPRO,
-    posting_period=PostingPeriod.ALL_TIME,
+    experience_levels=[ExperienceLevel.NO_EXPERIENCE, ExperienceLevel.UP_TO_1_YEAR],
+    posting_period=PostingPeriod.MONTH,
 )
+
+for resume in resumes:
+    print(
+        f"Title: {resume.title}, Experience: {resume.experience}, Skills: {resume.skills}, Location: {resume.location}, Salary: {resume.salary}, URL: {resume.url}")
