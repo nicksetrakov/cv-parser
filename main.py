@@ -1,3 +1,4 @@
+from db import save_resumes_to_db
 from parser_factory import ResumeParserFactory
 from resume_types import SearchType, ExperienceLevel, PostingPeriod, City
 
@@ -16,12 +17,7 @@ def main():
         city=City.DNIPRO,
         posting_period=PostingPeriod.MONTH,
     )
-
-    for resume in resumes:
-        print(
-            f"Experience: {resume.experience}, Skills: {resume.skills}, "
-            f"Location: {resume.location}, Salary: {resume.salary}, URL: {resume.url}"
-        )
+    save_resumes_to_db(resumes)
 
 
 if __name__ == "__main__":
