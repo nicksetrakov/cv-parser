@@ -4,8 +4,51 @@ from typing import List, Optional
 from enum import Enum
 import re
 
+import requests
+import re
 
-def parse_experience(experience_str):
+# Ваш API ключ
+API_KEY = "f096de09457b415abbdfb0bf"
+
+
+def get_exchange_rate(from_currency, to_currency):
+    url = (
+        f"https://v6.exchangerate-api.com/v6/{API_KEY}/latest/{from_currency}"
+    )
+    response = requests.get(url)
+    data = response.json()
+    if response.status_code == 200 and data["result"] == "success":
+        return data["conversion_rates"][to_currency]
+    else:
+        raise Exception(f"Error fetching exchange rate: {data['error-type']}")
+
+
+def convert_salary(salary_element):
+    if not salary_element:
+        return None
+
+    salary_element = salary_element.replace(" ", "")
+
+    pattern = r"(\d+)(\$|грн)"
+    match = re.search(pattern, salary_element)
+
+    if match:
+        amount = int(match.group(1))
+        currency = match.group(2)
+
+        if currency == "грн":
+            exchange_rate = get_exchange_rate("UAH", "USD")
+            amount = round(amount * exchange_rate, 2)
+
+        return amount
+
+    return None
+
+
+def convert_experience(experience_str: str | None) -> float:
+    if experience_str is None:
+        return 0
+
     pattern = re.compile(
         r"(\d+)\s*р(ок[иів]{0,2})?\s*(\d+)?\s*м(ісяц[іів]{0,2})?"
     )
@@ -31,28 +74,30 @@ def parse_experience(experience_str):
 
 @dataclass
 class Experience:
+    position: str
     company: str
-    type_company: str
+    company_type: str
     description: str
-    experience: int
+    years: float
 
 
 @dataclass
 class Education:
     name: str
     type_education: str
-    year: datetime.date
+    location: str
+    year: int
 
 
 @dataclass
 class Resume:
     full_name: str
     position: str
-    experience_years: Optional[int]
-    experience: Optional[Experience]
-    education: Optional[Education]
-    details: str
-    location: str
+    experience_years: Optional[float]
+    experience: Optional[List[Experience]]
+    education: Optional[List[Education]]
+    details: Optional[str]
+    location: Optional[str]
     salary: Optional[int]
     url: str
 
