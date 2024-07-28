@@ -1,12 +1,12 @@
 import json
 import logging
-import time
 from typing import List, Optional
 from urllib.parse import quote, urlencode
 
 from selenium.common import (
     NoSuchElementException,
     StaleElementReferenceException,
+    TimeoutException,
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -16,14 +16,17 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from abstract_parser import AbstractResumeParser
 from resume_types import (
     Resume,
-    SearchType,
-    City,
-    ExperienceLevel,
-    PostingPeriod,
     convert_experience,
     Experience,
     Education,
     convert_salary,
+    Language,
+)
+from robota_ua.utils import (
+    RobotaSearchType,
+    RobotaCity,
+    RobotaExperienceLevel,
+    RobotaPostingPeriod,
 )
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -64,6 +67,47 @@ class RobotaUaParser(AbstractResumeParser):
             )
         )
 
+    def get_next_page_url(self) -> Optional[str]:
+        try:
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, "nav.santa-flex a")
+                )
+            )
+
+            try:
+                next_button = self.driver.find_element(
+                    By.CSS_SELECTOR, "a.side-btn.next"
+                )
+                return next_button.get_attribute("href")
+            except NoSuchElementException:
+                pass
+
+            pagination_elements = self.driver.find_elements(
+                By.CSS_SELECTOR, "nav.santa-flex a"
+            )
+            current_page = None
+            for i, element in enumerate(pagination_elements):
+                if "active" in element.get_attribute("class"):
+                    current_page = i
+                    break
+
+            if current_page is not None and current_page + 1 < len(
+                pagination_elements
+            ):
+                return pagination_elements[current_page + 1].get_attribute(
+                    "href"
+                )
+
+        except TimeoutException:
+            print("Timeout waiting for pagination elements to load")
+        except Exception as e:
+            print(
+                f"An error occurred while trying to find the next page URL: {e}"
+            )
+
+        return None
+
     def get_element_text(
         self,
         by: By,
@@ -78,6 +122,23 @@ class RobotaUaParser(AbstractResumeParser):
             return self.driver.find_element(by, value).text
         except (NoSuchElementException, StaleElementReferenceException):
             return default
+
+    def parse_language(self, element: WebElement) -> Language:
+        name = self.get_element_text(
+            By.CSS_SELECTOR,
+            "h4.santa-typo-regular-bold.santa-text-black-700.santa-mb-10",
+            element=element,
+        )
+        level = self.get_element_text(
+            By.CSS_SELECTOR,
+            "p.santa-typo-regular.santa-text-black-700.santa-whitespace-nowrap.santa-sentence-case",
+            element=element,
+        )
+
+        return Language(
+            name=name,
+            level=level,
+        )
 
     def parse_experiences(self, job_element: WebElement) -> Experience:
         position = self.get_element_text(
@@ -145,7 +206,7 @@ class RobotaUaParser(AbstractResumeParser):
             year=year,
         )
 
-    def parse_single_resume(self, url: str) -> Resume:
+    def parse_single_resume(self, url: str) -> Optional[Resume]:
         self.driver.get(url)
 
         print("Open resume page")
@@ -159,17 +220,14 @@ class RobotaUaParser(AbstractResumeParser):
             full_name = self.get_element_text(
                 By.CSS_SELECTOR, "h1.santa-typo-h2.santa-text-black-700"
             )
-            print(full_name)
             position = self.get_element_text(
                 By.CLASS_NAME,
                 "santa-mt-10.santa-typo-secondary.santa-text-black-700",
             )
-            print(position)
             experience_general = self.get_element_text(
                 By.CSS_SELECTOR,
                 "span.santa-text-red-500.santa-whitespace-nowrap",
             )
-            print(experience_general)
             experience_years = convert_experience(experience_general)
 
             experience = [
@@ -178,7 +236,6 @@ class RobotaUaParser(AbstractResumeParser):
                     By.CSS_SELECTOR, "div.santa-mt-20.santa-mb-20"
                 )
             ]
-            print(experience)
             try:
                 education_section = self.driver.find_element(
                     By.XPATH,
@@ -205,28 +262,34 @@ class RobotaUaParser(AbstractResumeParser):
             else:
                 education = None
 
-            print(education)
+            language_elements = self.driver.find_elements(
+                By.CSS_SELECTOR, "div.language-item.santa-mb-20"
+            )
+
+            languages = [
+                self.parse_language(element) for element in language_elements
+            ]
+
             details = self.get_element_text(
                 By.CSS_SELECTOR, "div.santa-m-0.santa-mb-20"
             )
-            print(details)
 
             location = self.get_element_text(
                 By.CSS_SELECTOR,
                 "div.santa-flex.santa-items-start.santa-justify-start.santa-mb-10",
             )
-            print(location)
+
             salary_element = self.get_element_text(
                 By.CSS_SELECTOR, "p.santa-flex.santa-items-center.santa-mb-10"
             )
             salary = convert_salary(salary_element)
 
-            print(salary)
             return Resume(
                 full_name=full_name,
                 position=position,
                 experience_years=experience_years,
                 experience=experience,
+                languages=languages,
                 details=details,
                 salary=salary,
                 location=location,
@@ -269,13 +332,13 @@ class RobotaUaParser(AbstractResumeParser):
     def build_url(
         self,
         position: str,
-        search_type: SearchType = SearchType.SYNONYMS,
-        city: City = City.ALL_UKRAINE,
+        search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
+        city: RobotaCity = RobotaCity.ALL_UKRAINE,
         with_photo: bool = False,
         salary_from: Optional[int] = None,
         salary_to: Optional[int] = None,
-        experience_levels: Optional[List[ExperienceLevel]] = None,
-        posting_period: PostingPeriod = PostingPeriod.THREE_MONTHS,
+        experience_levels: Optional[List[RobotaExperienceLevel]] = None,
+        posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> str:
 
         position_url = (
@@ -287,7 +350,7 @@ class RobotaUaParser(AbstractResumeParser):
 
         params = {}
 
-        if search_type != SearchType.SYNONYMS:
+        if search_type != RobotaSearchType.SYNONYMS:
             params["searchType"] = json.dumps(search_type.value)
 
         if with_photo:
@@ -305,7 +368,7 @@ class RobotaUaParser(AbstractResumeParser):
                 [level.value for level in experience_levels]
             )
 
-        if posting_period != PostingPeriod.THREE_MONTHS:
+        if posting_period != RobotaPostingPeriod.THREE_MONTHS:
             params["period"] = json.dumps(posting_period.value)
 
         return f"{base_url}?{urlencode(params)}" if params else base_url
@@ -313,14 +376,15 @@ class RobotaUaParser(AbstractResumeParser):
     def parse_resumes(
         self,
         position: str,
-        search_type: SearchType = SearchType.SYNONYMS,
-        city: City = City.ALL_UKRAINE,
+        search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
+        city: RobotaCity = RobotaCity.ALL_UKRAINE,
         with_photo: bool = False,
         salary_from: Optional[int] = None,
         salary_to: Optional[int] = None,
-        experience_levels: Optional[List[ExperienceLevel]] = None,
-        posting_period: PostingPeriod = PostingPeriod.THREE_MONTHS,
+        experience_levels: Optional[List[RobotaExperienceLevel]] = None,
+        posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
+
         url = self.build_url(
             position,
             search_type,
@@ -332,4 +396,15 @@ class RobotaUaParser(AbstractResumeParser):
             posting_period,
         )
         print(f"Parsing URL: {url}")
-        return self.parse_single_page(url)
+        resumes = self.parse_single_page(url)
+
+        while True:
+            self.driver.get(url)
+            url = self.get_next_page_url()
+            print(f"next url: {url}")
+            if url:
+                resumes.extend(self.parse_single_page(url))
+            else:
+                break
+
+        return resumes
