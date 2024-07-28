@@ -1,8 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
 from typing import List, Optional
-from enum import Enum
-import re
 
 import requests
 import re
@@ -11,7 +8,7 @@ import re
 API_KEY = "f096de09457b415abbdfb0bf"
 
 
-def get_exchange_rate(from_currency, to_currency):
+def get_exchange_rate(from_currency, to_currency) -> float:
     url = (
         f"https://v6.exchangerate-api.com/v6/{API_KEY}/latest/{from_currency}"
     )
@@ -23,7 +20,7 @@ def get_exchange_rate(from_currency, to_currency):
         raise Exception(f"Error fetching exchange rate: {data['error-type']}")
 
 
-def convert_salary(salary_element):
+def convert_salary(salary_element) -> Optional[float]:
     if not salary_element:
         return None
 
@@ -36,8 +33,8 @@ def convert_salary(salary_element):
         amount = int(match.group(1))
         currency = match.group(2)
 
-        if currency == "грн":
-            exchange_rate = get_exchange_rate("UAH", "USD")
+        if currency == "$":
+            exchange_rate = get_exchange_rate("USD", "UAH")
             amount = round(amount * exchange_rate, 2)
 
         return amount
@@ -46,30 +43,24 @@ def convert_salary(salary_element):
 
 
 def convert_experience(experience_str: str | None) -> float:
-    if experience_str is None:
-        return 0
+    # Регулярное выражение для извлечения лет и месяцев опыта
+    years_pattern = r'(\d+)\s*р(ік|оки|ок|.)'
+    months_pattern = r'(\d+)\s*місяц(ь|і|яців|я|ів|яці)'
 
-    pattern = re.compile(
-        r"(\d+)\s*р(ок[иів]{0,2})?\s*(\d+)?\s*м(ісяц[іів]{0,2})?"
-    )
+    years_match = re.search(years_pattern, experience_str)
+    months_match = re.search(months_pattern, experience_str)
 
-    match = pattern.search(experience_str)
-    if not match:
-        # Обработка случая, когда в строке только месяцы
-        months_pattern = re.compile(r"(\d+)\s*м(ісяц[іів]{0,2})?")
-        months_match = months_pattern.search(experience_str)
-        if months_match:
-            months = int(months_match.group(1))
-            years = months / 12
-            return round(years, 1)
-        return 0
-
-    years = int(match.group(1)) if match.group(1) else 0
-    months = int(match.group(3)) if match.group(3) else 0
+    years = int(years_match.group(1)) if years_match else 0
+    months = int(months_match.group(1)) if months_match else 0
 
     total_years = years + (months / 12)
-
     return round(total_years, 1)
+
+
+@dataclass
+class Language:
+    name: str
+    level: str
 
 
 @dataclass
@@ -96,47 +87,9 @@ class Resume:
     experience_years: Optional[float]
     experience: Optional[List[Experience]]
     education: Optional[List[Education]]
+    skills: Optional[List[str]]
     details: Optional[str]
     location: Optional[str]
-    salary: Optional[int]
+    salary: Optional[float]
+    languages: Optional[List[Language]]
     url: str
-
-
-@dataclass
-class SearchType(Enum):
-    SYNONYMS = ""
-    EVERYWHERE = "everywhere"
-    SPECIALITY = "speciality"
-    EDUCATION = "education"
-    SKILLS = "skills"
-    EXPERIENCE = "experience"
-
-
-class City(Enum):
-    ALL_UKRAINE = "ukraine"
-    KYIV = "kyiv"
-    DNIPRO = "dnipro"
-    KHARKIV = "kharkiv"
-    ZAPORIZHIA = "zaporizhia"
-    ODESSA = "odessa"
-    LVIV = "lviv"
-    OTHER_COUNTRIES = "other_countries"
-
-
-class ExperienceLevel(Enum):
-    NO_EXPERIENCE = "0"
-    UP_TO_1_YEAR = "1"
-    FROM_1_TO_2_YEARS = "2"
-    FROM_2_TO_5_YEARS = "3"
-    FROM_5_TO_10_YEARS = "4"
-    MORE_THAN_10_YEARS = "5"
-
-
-class PostingPeriod(Enum):
-    TODAY = "Today"
-    THREE_DAYS = "ThreeDays"
-    WEEK = "Week"
-    MONTH = "Month"
-    THREE_MONTHS = ""
-    YEAR = "Year"
-    ALL_TIME = "All"
