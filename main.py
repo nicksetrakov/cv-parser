@@ -1,21 +1,33 @@
 from db import save_resumes_to_db
 from parser_factory import ResumeParserFactory
-from resume_types import SearchType, ExperienceLevel, PostingPeriod, City
+from robota_ua.utils import (
+    RobotaSearchType,
+    RobotaExperienceLevel,
+    RobotaPostingPeriod,
+    RobotaCity,
+)
+from work_ua.utils import (
+    WorkUaSalary,
+    WorkUaPostingPeriod,
+    WorkUaCity,
+    WorkUaExperience,
+    WorkUaSearchType,
+)
 
 
 def main():
-    parser = ResumeParserFactory.get_parser("robota.ua")
+    parser = ResumeParserFactory.get_parser("work.ua")
     resumes = parser.parse_resumes(
-        "python,django",
-        search_type=SearchType.SKILLS,
-        salary_from=3000,
-        salary_to=30000,
+        "python developer",
+        search_type=WorkUaSearchType.DEFAULT,
+        salary_from=WorkUaSalary.AMOUNT_5000,
+        salary_to=WorkUaSalary.AMOUNT_50000,
         experience_levels=[
-            ExperienceLevel.NO_EXPERIENCE,
-            ExperienceLevel.UP_TO_1_YEAR,
+            WorkUaExperience.FROM_1_TO_2_YEARS,
         ],
-        city=City.DNIPRO,
-        posting_period=PostingPeriod.MONTH,
+        city=WorkUaCity.KYIV,
+        posting_period=WorkUaPostingPeriod.THIRTY_DAYS,
+        no_salary=True,
     )
     save_resumes_to_db(resumes)
 
