@@ -82,6 +82,7 @@ def save_resumes_to_db(resumes: List[Resume], db_path: str = "resumes.db"):
     cursor = conn.cursor()
 
     for resume in resumes:
+        skills = ", ".join(resume.skills) if resume.skills else None
         cursor.execute(
             """
             INSERT INTO resumes (full_name, position, experience_years, skills, details, location, salary, url)
@@ -91,7 +92,7 @@ def save_resumes_to_db(resumes: List[Resume], db_path: str = "resumes.db"):
                 resume.full_name,
                 resume.position,
                 resume.experience_years,
-                ", ".join(resume.skills),
+                skills,
                 resume.details,
                 resume.location,
                 resume.salary,
