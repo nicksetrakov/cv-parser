@@ -1,4 +1,30 @@
+import re
 from enum import Enum
+from typing import Optional
+
+
+def extract_text_in_parentheses(text: str) -> Optional[str]:
+    pattern = r"\((.*?)\)"
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_city(text: str) -> Optional[str]:
+    patterns = [
+        r"Місто(?: проживання)?:\s*([^,\n]+)",
+        r"Місто\s*([^\n]+)",
+        r"Місто проживання:\s*([^,\n]+)",
+        r"Готовий працювати:\s*[^,\n]+,\s*([^,\n]+)",
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+
+    return None
 
 
 class WorkUaCity(Enum):
