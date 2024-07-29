@@ -1,64 +1,134 @@
-import sqlite3
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters.command import Command
-from aiogram.types import Message
-from aiogram.utils.markdown import hbold
 import asyncio
+import logging
+import os
+import sys
+from os import getenv
 
-# Замените 'YOUR_BOT_TOKEN' на токен вашего бота
-API_TOKEN = "YOUR_BOT_TOKEN"
+from aiogram import Bot, Dispatcher, F, Router, html
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    CallbackQuery,
+)
+from dotenv import load_dotenv
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+from work_ua.work_ua_parser import WorkUaParser
+from robota_ua.robota_ua_parser import RobotaUaParser
+
+load_dotenv()
+
+TOKEN = os.getenv('BOT_TOKEN')
+
+resume_router = Router()
 
 
-# Функция для получения резюме из базы данных
-def get_resumes(limit=5):
-    conn = sqlite3.connect("resumes.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-    SELECT id, full_name, position, experience_years, location, salary
-    FROM resumes
-    LIMIT ?
-    """,
-        (limit,),
-    )
-    resumes = cursor.fetchall()
-    conn.close()
-    return resumes
+class ResumeForm(StatesGroup):
+    choosing_source = State()
+    choosing_filters = State()
+    parsing = State()
+    choosing_sort = State()
 
 
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
+@resume_router.message(CommandStart())
+async def command_start(message: Message, state: FSMContext) -> None:
+    await state.set_state(ResumeForm.choosing_source)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Work.ua", callback_data="source_work")],
+        [InlineKeyboardButton(text="Robota.ua", callback_data="source_robota")],
+        [InlineKeyboardButton(text="Оба ресурса", callback_data="source_both")]
+    ])
     await message.answer(
-        "Привет! Я бот для просмотра резюме. Используй /resumes для просмотра последних резюме."
+        "Выберите источник для парсинга резюме:",
+        reply_markup=keyboard,
     )
 
 
-@dp.message(Command("resumes"))
-async def cmd_resumes(message: Message):
-    resumes = get_resumes()
-    if not resumes:
-        await message.answer("Резюме не найдены.")
-        return
+@resume_router.callback_query(ResumeForm.choosing_source, F.data.startswith("source_"))
+async def process_source(callback: CallbackQuery, state: FSMContext) -> None:
+    source = callback.data.split('_')[1]
+    await state.update_data(source=source)
 
-    response = "Последние резюме:\n\n"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Добавить фильтры", callback_data="add_filters")],
+        [InlineKeyboardButton(text="Начать парсинг", callback_data="start_parsing")]
+    ])
+
+    await callback.message.edit_text("Хотите добавить фильтры для поиска?", reply_markup=keyboard)
+    await state.set_state(ResumeForm.choosing_filters)
+
+
+@resume_router.callback_query(ResumeForm.choosing_filters, F.data == "add_filters")
+async def process_filters(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.message.edit_text("Фильтры добавлены. Начинаем парсинг...")
+    await start_parsing(callback.message, state)
+
+
+@resume_router.callback_query(ResumeForm.choosing_filters, F.data == "start_parsing")
+async def start_parsing(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    source = data['source']
+
+    work_resumes, robota_resumes = [], []
+
+    if source == 'work' or source == 'both':
+        work_resumes = WorkUaParser.parse_resumes("your_search_query")
+    if source == 'robota' or source == 'both':
+        robota_resumes = RobotaUaParser.parse_resumes("your_search_query")
+
+    all_resumes = work_resumes + robota_resumes if source == 'both' else work_resumes or robota_resumes
+
+    await message.edit_text(f"Найдено {len(all_resumes)} резюме. Как вы хотите их отсортировать?")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="По зарплате", callback_data="sort_salary")],
+        [InlineKeyboardButton(text="По опыту работы", callback_data="sort_experience")]
+    ])
+
+    await message.answer("Выберите порядок сортировки:", reply_markup=keyboard)
+    await state.set_state(ResumeForm.choosing_sort)
+    await state.update_data(resumes=all_resumes)
+
+
+@resume_router.callback_query(ResumeForm.choosing_sort, F.data.startswith("sort_"))
+async def sort_resumes(callback: CallbackQuery, state: FSMContext) -> None:
+    sort_type = callback.data.split('_')[1]
+    data = await state.get_data()
+    resumes = data['resumes']
+
+    if sort_type == 'salary':
+        resumes.sort(key=lambda x: x.salary or 0, reverse=True)
+    elif sort_type == 'experience':
+        resumes.sort(key=lambda x: x.experience_years or 0, reverse=True)
+
+    await send_resumes(callback.message, resumes[:10])
+    await state.clear()
+
+
+async def send_resumes(message: Message, resumes: list) -> None:
     for resume in resumes:
-        response += f"{hbold('Имя:')} {resume[1]}\n"
-        response += f"{hbold('Позиция:')} {resume[2]}\n"
-        response += f"{hbold('Опыт:')} {resume[3]} лет\n"
-        response += f"{hbold('Локация:')} {resume[4]}\n"
-        if resume[5]:
-            response += f"{hbold('Зарплата:')} {resume[5]}\n"
-        response += "\n"
-
-    await message.answer(response, parse_mode="HTML")
+        text = f"{html.bold('Имя:')} {html.quote(resume.full_name)}\n"
+        text += f"{html.bold('Позиция:')} {html.quote(resume.position)}\n"
+        text += f"{html.bold('Опыт:')} {resume.experience_years} лет\n"
+        text += f"{html.bold('Локация:')} {html.quote(resume.location)}\n"
+        if resume.salary:
+            text += f"{html.bold('Зарплата:')} {resume.salary}\n"
+        text += f"{html.bold('URL:')} {resume.url}\n"
+        await message.answer(text=text)
 
 
 async def main():
+    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    dp = Dispatcher()
+    dp.include_router(resume_router)
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     asyncio.run(main())
