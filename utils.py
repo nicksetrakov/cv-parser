@@ -1,5 +1,6 @@
 import os
 import re
+from enum import Enum
 from typing import Optional
 
 import requests
@@ -8,6 +9,23 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
+
+class BaseEnum(Enum):
+
+    @classmethod
+    def get_display_value(cls, key: str) -> str:
+        for item in cls:
+            if item.value[0] == key:
+                return item.value[1]
+        return None
+
+    @property
+    def filter(self):
+        return self.value[0]
+
+    @property
+    def ukraine(self):
+        return self.value[1]
 
 def get_exchange_rate(from_currency, to_currency) -> float:
     url = (
