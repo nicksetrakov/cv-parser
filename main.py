@@ -26,7 +26,7 @@ def main():
             RobotaExperienceLevel.FROM_1_TO_2_YEARS,
             RobotaExperienceLevel.FROM_2_TO_5_YEARS
         ],
-        posting_period=RobotaPostingPeriod.MONTH,
+        publication_period=RobotaPostingPeriod.MONTH,
         city=RobotaCity.DNIPRO
     )
     save_resumes_to_db(resumes)

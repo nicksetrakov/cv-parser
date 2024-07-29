@@ -405,8 +405,8 @@ class RobotaUaParser(AbstractResumeParser):
         with_photo: bool = False,
         salary_from: Optional[int] = None,
         salary_to: Optional[int] = None,
-        experience_levels: Optional[List[RobotaExperienceLevel]] = None,
-        posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+        experience: Optional[List[RobotaExperienceLevel]] = None,
+        publication_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
 
         url = self.build_url(
@@ -416,8 +416,8 @@ class RobotaUaParser(AbstractResumeParser):
             with_photo,
             salary_from,
             salary_to,
-            experience_levels,
-            posting_period,
+            experience,
+            publication_period,
         )
 
         resumes = self.parse_single_page(url)
