@@ -1,40 +1,41 @@
 import logging
-import re
-import time
 from typing import List, Optional
 from urllib.parse import quote, urlencode
 
+from selenium import webdriver
 from selenium.common import (
     NoSuchElementException,
     TimeoutException,
     StaleElementReferenceException,
 )
 from selenium.webdriver import ActionChains
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.common.by import By
+from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 from abstract_parser import AbstractResumeParser
+from logging_config import setup_logging
 from resume_types import (
     Resume,
-    convert_salary,
-    convert_experience,
     Education,
     Experience,
     Language,
 )
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.remote.webelement import WebElement
-
+from utils import convert_experience, convert_salary
 from work_ua.utils import (
     WorkUaCity,
     WorkUaSearchType,
     WorkUaSalary,
     WorkUaExperience,
     WorkUaPostingPeriod,
+    extract_text_in_parentheses,
+    extract_city,
 )
+
+setup_logging("work_ua_parser.log")
 
 
 class WorkUaParser(AbstractResumeParser):
@@ -42,32 +43,32 @@ class WorkUaParser(AbstractResumeParser):
 
     def __init__(self):
         chrome_options = Options()
+        chrome_options.add_argument("--headless")
         self.driver = webdriver.Chrome(
             service=ChromeService(), options=chrome_options
         )
 
-    def get_next_page_url(self) -> Optional[str]:
+    def get_next_page_url(self, url) -> Optional[str]:
+        self.driver.get(url)
+
         try:
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
                     (By.CSS_SELECTOR, "a.link-icon")
                 )
             )
-            try:
-                few_resumes = self.driver.find_element(
-                    By.XPATH, "//h2[contains(text(), 'Мало результатів?')]"
-                )
-            except NoSuchElementException:
 
-                next_button = self.driver.find_element(
-                    By.CSS_SELECTOR, "a.link-icon"
-                )
+            next_button = self.driver.find_element(
+                By.CSS_SELECTOR, "a.link-icon"
+            )
+
+            if next_button.text == "Наступна":
                 return next_button.get_attribute("href")
 
         except TimeoutException:
-            print("Timeout waiting for pagination elements to load")
+            logging.error("Timeout waiting for pagination elements to load")
         except Exception as e:
-            print(
+            logging.error(
                 f"An error occurred while trying to find the next page URL: {e}"
             )
 
@@ -80,6 +81,7 @@ class WorkUaParser(AbstractResumeParser):
         element: Optional[WebElement] = None,
         default: Optional[str] = None,
     ) -> str:
+
         try:
             if element:
                 return element.find_element(by, value).text
@@ -89,6 +91,7 @@ class WorkUaParser(AbstractResumeParser):
             return default
 
     def parse_language(self) -> List[Language]:
+
         try:
             languages_heading = self.driver.find_element(
                 By.XPATH, "//h2[contains(text(), 'Знання мов')]"
@@ -124,21 +127,13 @@ class WorkUaParser(AbstractResumeParser):
                         Language(name=name.strip(), level=level.strip())
                     )
                 except NoSuchElementException:
-                    print("No language found")
+                    logging.info("No language found")
 
             return languages
 
         except NoSuchElementException:
-            print("Languages section not found")
+            logging.info("Languages section not found")
             return []
-
-    @staticmethod
-    def extract_text_in_parentheses(text):
-        pattern = r"\((.*?)\)"
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1)
-        return None
 
     def parse_experiences(self) -> List[Experience]:
         experience_heading = self.driver.find_element(
@@ -164,6 +159,7 @@ class WorkUaParser(AbstractResumeParser):
 
         elements = []
         current_element = experience_heading
+
         while current_element != education_heading:
             current_element = current_element.find_element(
                 By.XPATH, "following-sibling::*"
@@ -171,40 +167,35 @@ class WorkUaParser(AbstractResumeParser):
             elements.append(current_element)
 
         experiences = []
+
         for element in elements[:-1]:
             if element.tag_name == "h2":
                 position = element.text
-                print(position)
 
             if element.get_attribute("class") == "mb-0":
                 years, company_information = element.text.split("\n")
-                print(
-                    f"years: {years}, company_information: {company_information}"
-                )
-                years = convert_experience(
-                    self.extract_text_in_parentheses(years)
+
+                years = convert_experience(extract_text_in_parentheses(years))
+
+                company_information = company_information.split("(")
+
+                company_name, company_type = (
+                    company_information[0],
+                    company_information[-1][:-1],
                 )
 
-                if "," in company_information:
-                    company_information = company_information.split(", ")
-                else:
-                    company_information = company_information.split()
-                print(company_information)
-                company_name, company_type = company_information
-                company_type = self.extract_text_in_parentheses(company_type)
-                print(company_name, company_type)
+                experience = Experience(
+                    position=position,
+                    company=company_name,
+                    company_type=company_type,
+                    description=None,
+                    years=years,
+                )
+
+                experiences.append(experience)
 
             if element.get_attribute("class") == "text-default-7 mb-0":
-                description = element.text
-                experiences.append(
-                    Experience(
-                        position,
-                        company_name,
-                        company_type,
-                        description,
-                        years,
-                    )
-                )
+                experience.description = element.text
 
         return experiences
 
@@ -220,9 +211,16 @@ class WorkUaParser(AbstractResumeParser):
                     "//h2[contains(text(), 'Додаткова освіта та сертифікати')]",
                 )
             except NoSuchElementException:
-                additional_education_heading = self.driver.find_element(
-                    By.CSS_SELECTOR, "div.card.mt-0.card-indent-p.hidden-print"
-                )
+                try:
+                    additional_education_heading = self.driver.find_element(
+                        By.XPATH,
+                        "//h2[contains(text(), 'Знання і навички')]",
+                    )
+                except NoSuchElementException:
+                    additional_education_heading = self.driver.find_element(
+                        By.CSS_SELECTOR,
+                        "div.card.mt-0.card-indent-p.hidden-print",
+                    )
 
             actions = ActionChains(self.driver)
             actions.move_to_element(education_heading).perform()
@@ -239,14 +237,23 @@ class WorkUaParser(AbstractResumeParser):
             for element in elements[:-1]:
                 if element.tag_name == "h2":
                     institution = element.text
-                    print(institution)
 
                 if element.get_attribute("class") == "mb-0":
                     education_information, years = element.text.split("\n")
-                    print(education_information, years)
-                    education_type, location = education_information.split(
-                        ", "
-                    )
+                    education_information = education_information.split(", ")
+
+                    if len(education_information) == 2:
+                        education_type, location = education_information
+                    elif len(education_information) == 1:
+                        education_type, location = (
+                            education_information[0],
+                            None,
+                        )
+                    else:
+                        education_type, location = (
+                            education_information[1],
+                            education_information[-1],
+                        )
                     years = int(years.split()[-3])
 
                     educations.append(
@@ -262,29 +269,13 @@ class WorkUaParser(AbstractResumeParser):
 
         return educations
 
-    @staticmethod
-    def extract_city(text: str) -> Optional[str]:
-        patterns = [
-            r"Місто(?: проживання)?:\s*([^,\n]+)",
-            r"Місто\s*([^\n]+)",
-            r"Місто проживання:\s*([^,\n]+)",
-            r"Готовий працювати:\s*[^,\n]+,\s*([^,\n]+)",
-        ]
-
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
-            if match:
-                return match.group(1).strip()
-
-        return None
-
     def parse_single_resume(self, url: str) -> Optional[Resume]:
         self.driver.get(url)
-        print(f"Open resume page {url}")
+
         WebDriverWait(self.driver, 30).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "h1.mt-0.mb-0"))
         )
-        print("Started parsing single resume")
+
         try:
             full_name = self.get_element_text(By.CSS_SELECTOR, "h1.mt-0.mb-0")
 
@@ -294,33 +285,37 @@ class WorkUaParser(AbstractResumeParser):
 
             if len(position_element) == 2:
                 position, salary = position_element
+            elif len(position_element) >= 3:
+                position, salary = (
+                    ", ".join(position_element[:-1]),
+                    position_element[-1],
+                )
             else:
                 position, salary = "".join(position_element), None
 
             salary = convert_salary(salary)
 
-            print(position, salary)
             experience = self.parse_experiences()
-            print(experience)
+
             experience_years = sum(exp.years for exp in experience)
-            print(experience_years)
+
             education = self.parse_education()
-            print(education)
+
             skills = self.driver.find_element(
                 By.XPATH,
                 "//div[@class='card wordwrap mt-0']//ul[@class='list-unstyled my-0 flex flex-wrap']",
             ).text.split("\n")
-            print(skills)
+
             languages = self.parse_language()
-            print(languages)
+
             details = self.get_element_text(By.ID, "addInfo")
-            print(details)
+
             location = self.get_element_text(
                 By.CSS_SELECTOR,
                 "dl.dl-horizontal",
             )
-            location = self.extract_city(location)
-            print(location)
+            location = extract_city(location)
+
             return Resume(
                 full_name=full_name,
                 position=position,
@@ -340,29 +335,30 @@ class WorkUaParser(AbstractResumeParser):
 
     def parse_single_page(self, url: str) -> List[Resume]:
         self.driver.get(url)
+
         resumes = []
+
         try:
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "pjax-resume-list"))
             )
-            print("Started parsing single page")
 
             resume_cards = self.driver.find_elements(
                 By.CSS_SELECTOR,
                 "div.card.card-hover.card-search.resume-link.card-visited.wordwrap",
             )
+
             resume_links = [
                 resume.find_element(By.TAG_NAME, "a").get_attribute("href")
                 for resume in resume_cards
             ]
-            print(len(resume_links))
-            print(resume_links)
 
             for resume_link in resume_links:
                 resume = self.parse_single_resume(resume_link)
+
                 if resume:
                     resumes.append(resume)
-                    print("added resume to resumes")
+
         except Exception as e:
             logging.error(f"Error parsing page: {str(e)}")
         return resumes
@@ -381,7 +377,7 @@ class WorkUaParser(AbstractResumeParser):
         position_url = quote(position.replace(" ", "-").lower())
 
         if city == WorkUaCity.ALL_UKRAINE:
-            base_url = f"{self.BASE_URL}/{position_url}/"
+            base_url = f"{self.BASE_URL}-{position_url}/"
         else:
             base_url = f"{self.BASE_URL}-{city.value}-{position_url}/"
 
@@ -433,12 +429,12 @@ class WorkUaParser(AbstractResumeParser):
             experience_levels,
             posting_period,
         )
-        print(f"Parsing URL: {url}")
+
         resumes = self.parse_single_page(url)
 
         while True:
-            next_url = self.get_next_page_url()
-            print(next_url)
+            next_url = self.get_next_page_url(url)
+
             if next_url:
                 resumes.extend(self.parse_single_page(next_url))
             else:
