@@ -2,6 +2,8 @@ import re
 from enum import Enum
 from typing import Optional
 
+from utils import BaseEnum
+
 
 def extract_text_in_parentheses(text: str) -> Optional[str]:
     pattern = r"\((.*?)\)"
@@ -27,48 +29,45 @@ def extract_city(text: str) -> Optional[str]:
     return None
 
 
-class WorkUaCity(Enum):
-    ALL_UKRAINE = ""
-    REMOTE = "remote"
-    DNIPRO = "dnipro"
-    ODESA = "odesa"
-    KYIV = "kyiv"
-    KHARKIV = "kharkiv"
-    OTHER_COUNTRIES = "other"
+class WorkUaCity(BaseEnum):
+    ALL_UKRAINE = ("", "Вся країна")
+    REMOTE = ("remote", "Ремоут")
+    DNIPRO = ("dnipro", "Дніпро")
+    ODESA = ("odesa", "Одеса")
+    KYIV = ("kyiv", "Київ")
+    KHARKIV = ("kharkiv", "Харків")
+    OTHER_COUNTRIES = ("other", "Інші країни")
 
 
-class WorkUaSearchType(Enum):
-    DEFAULT = ""
-    TITLE_ONLY = "snowide=1"
-    SYNONYMS_ONLY = "notitle=1"
-    ANY_WORD = "anyword=1"
+class WorkUaSearchType(BaseEnum):
+    DEFAULT = ("", "За замовчуванням")
+    TITLE_ONLY = ("snowide=1", "Тільки у заголовку")
+    SYNONYMS_ONLY = ("notitle=1", "Включно з синонімами")
+    ANY_WORD = ("anyword=1", "Шукати будь-яке зі слів")
 
 
-class WorkUaSalary(Enum):
-    AMOUNT_5000 = 5
-    AMOUNT_7000 = 7
-    AMOUNT_10000 = 10
-    AMOUNT_15000 = 11
-    AMOUNT_20000 = 12
-    AMOUNT_25000 = 13
-    AMOUNT_30000 = 14
-    AMOUNT_40000 = 15
-    AMOUNT_50000 = 16
-    AMOUNT_100000 = 17
+class WorkUaSalary(BaseEnum):
+    AMOUNT_10000 = (2, "10000")
+    AMOUNT_15000 = (3, "15000")
+    AMOUNT_20000 = (4, "20000")
+    AMOUNT_30000 = (5, "30000")
+    AMOUNT_40000 = (6, "40000")
+    AMOUNT_50000 = (7, "50000")
+    AMOUNT_100000 = (8, "100000")
 
 
-class WorkUaExperience(Enum):
-    NO_EXPERIENCE = 0
-    UP_TO_1_YEAR = 1
-    FROM_1_TO_2_YEARS = 164
-    FROM_2_TO_5_YEARS = 165
-    OVER_5_YEARS = 166
+class WorkUaExperience(BaseEnum):
+    NO_EXPERIENCE = (0, "Без досвіду")
+    UP_TO_1_YEAR = (1, "До 1 року")
+    FROM_1_TO_2_YEARS = (164, "Від 1 до 2 років")
+    FROM_2_TO_5_YEARS = (165, "Від 2 до 5 років")
+    OVER_5_YEARS = (166, "Понад 5 років")
 
 
-class WorkUaPostingPeriod(Enum):
-    THREE_MONTHS = None
-    ONE_DAY = 1
-    SEVEN_DAYS = 2
-    THIRTY_DAYS = 3
-    ONE_YEAR = 5
-    ALL_TIME = 6
+class WorkUaPostingPeriod(BaseEnum):
+    THREE_MONTHS = (None, "За 3 місяці")
+    ONE_DAY = (1, "За 1 день")
+    SEVEN_DAYS = (2, "За тиждень")
+    THIRTY_DAYS = (3, "За 30 днів")
+    ONE_YEAR = (5, "За рік")
+    ALL_TIME = (6, "За весь час")
