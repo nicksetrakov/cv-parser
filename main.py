@@ -16,18 +16,18 @@ from work_ua.utils import (
 
 
 def main():
-    parser = ResumeParserFactory.get_parser("work.ua")
+    parser = ResumeParserFactory.get_parser("robota.ua")
     resumes = parser.parse_resumes(
         "python developer",
-        search_type=WorkUaSearchType.DEFAULT,
-        salary_from=WorkUaSalary.AMOUNT_5000,
-        salary_to=WorkUaSalary.AMOUNT_50000,
+        search_type=RobotaSearchType.SYNONYMS,
+        salary_from=3000,
+        salary_to=30000,
         experience_levels=[
-            WorkUaExperience.FROM_1_TO_2_YEARS,
+            RobotaExperienceLevel.FROM_1_TO_2_YEARS,
+            RobotaExperienceLevel.FROM_2_TO_5_YEARS
         ],
-        city=WorkUaCity.KYIV,
-        posting_period=WorkUaPostingPeriod.THIRTY_DAYS,
-        no_salary=True,
+        posting_period=RobotaPostingPeriod.MONTH,
+        city=RobotaCity.DNIPRO
     )
     save_resumes_to_db(resumes)
 
