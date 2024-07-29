@@ -416,8 +416,8 @@ class WorkUaParser(AbstractResumeParser):
         salary_from: Optional[WorkUaSalary] = None,
         salary_to: Optional[WorkUaSalary] = None,
         no_salary: bool = False,
-        experience_levels: List[WorkUaExperience] = None,
-        posting_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+        experience: List[WorkUaExperience] = None,
+        publication_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
         url = self.build_url(
             position,
@@ -426,8 +426,8 @@ class WorkUaParser(AbstractResumeParser):
             salary_from,
             salary_to,
             no_salary,
-            experience_levels,
-            posting_period,
+            experience,
+            publication_period,
         )
 
         resumes = self.parse_single_page(url)

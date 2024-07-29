@@ -22,7 +22,7 @@ def main():
         search_type=RobotaSearchType.SYNONYMS,
         salary_from=3000,
         salary_to=30000,
-        experience_levels=[
+        experience=[
             RobotaExperienceLevel.FROM_1_TO_2_YEARS,
             RobotaExperienceLevel.FROM_2_TO_5_YEARS
         ],
