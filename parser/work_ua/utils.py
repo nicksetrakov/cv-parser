@@ -1,8 +1,7 @@
 import re
-from enum import Enum
 from typing import Optional
 
-from utils import BaseEnum
+from parser.utils import BaseEnum
 
 
 def extract_text_in_parentheses(text: str) -> Optional[str]:

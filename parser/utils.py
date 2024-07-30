@@ -13,7 +13,7 @@ API_KEY = os.getenv("API_KEY")
 class BaseEnum(Enum):
 
     @classmethod
-    def get_display_value(cls, key: str) -> str:
+    def get_display_value(cls, key: str) -> Optional[str]:
         for item in cls:
             if item.value[0] == key:
                 return item.value[1]
@@ -26,6 +26,7 @@ class BaseEnum(Enum):
     @property
     def ukraine(self):
         return self.value[1]
+
 
 def get_exchange_rate(from_currency, to_currency) -> float:
     url = (

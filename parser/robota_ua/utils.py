@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from enum import Enum
 
-from utils import BaseEnum
+from parser.utils import BaseEnum
 
 
 @dataclass
