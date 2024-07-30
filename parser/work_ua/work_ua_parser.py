@@ -2,30 +2,28 @@ import logging
 from typing import List, Optional
 from urllib.parse import quote, urlencode
 
-from selenium import webdriver
 from selenium.common import (
     NoSuchElementException,
     TimeoutException,
     StaleElementReferenceException,
 )
 from selenium.webdriver import ActionChains
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from abstract_parser import AbstractResumeParser
 from logging_config import setup_logging
-from resume_types import (
+from parser.abstract_parser import AbstractResumeParser
+from parser.relevance import calculate_resume_score
+from parser.resume_types import (
     Resume,
     Education,
     Experience,
     Language,
 )
-from utils import convert_experience, convert_salary
-from work_ua.utils import (
+from parser.utils import convert_experience, convert_salary
+from parser.work_ua.utils import (
     WorkUaCity,
     WorkUaSearchType,
     WorkUaSalary,
@@ -40,13 +38,6 @@ setup_logging("work_ua_parser.log")
 
 class WorkUaParser(AbstractResumeParser):
     BASE_URL = "https://www.work.ua/resumes"
-
-    def __init__(self):
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        self.driver = webdriver.Chrome(
-            service=ChromeService(), options=chrome_options
-        )
 
     def get_next_page_url(self, url) -> Optional[str]:
         self.driver.get(url)
@@ -69,7 +60,8 @@ class WorkUaParser(AbstractResumeParser):
             logging.error("Timeout waiting for pagination elements to load")
         except Exception as e:
             logging.error(
-                f"An error occurred while trying to find the next page URL: {e}"
+                "An error occurred while trying "
+                f"to find the next page URL: {e}"
             )
 
         return None
@@ -136,9 +128,14 @@ class WorkUaParser(AbstractResumeParser):
             return []
 
     def parse_experiences(self) -> List[Experience]:
-        experience_heading = self.driver.find_element(
-            By.XPATH, "//h2[contains(text(), 'Досвід роботи')]"
-        )
+        try:
+            experience_heading = self.driver.find_element(
+                By.XPATH, "//h2[contains(text(), 'Досвід роботи')]"
+            )
+        except NoSuchElementException:
+            logging.info("Experience section not found")
+            return []
+
         try:
             education_heading = self.driver.find_element(
                 By.XPATH, "//h2[contains(text(), 'Освіта')]"
@@ -147,12 +144,21 @@ class WorkUaParser(AbstractResumeParser):
             try:
                 education_heading = self.driver.find_element(
                     By.XPATH,
-                    "//h2[contains(text(), 'Додаткова освіта та сертифікати')]",
+                    (
+                        "//h2[contains(text(), "
+                        "'Додаткова освіта та сертифікати')]"
+                    ),
                 )
             except NoSuchElementException:
-                education_heading = self.driver.find_element(
-                    By.XPATH, "//h2[contains(text(), 'Знання і навички')]"
-                )
+                try:
+                    education_heading = self.driver.find_element(
+                        By.XPATH, "//h2[contains(text(), 'Знання і навички')]"
+                    )
+                except NoSuchElementException:
+                    education_heading = self.driver.find_element(
+                        By.CSS_SELECTOR,
+                        "div.card.mt-0.card-indent-p.hidden-print",
+                    )
 
         actions = ActionChains(self.driver)
         actions.move_to_element(experience_heading).perform()
@@ -208,7 +214,10 @@ class WorkUaParser(AbstractResumeParser):
             try:
                 additional_education_heading = self.driver.find_element(
                     By.XPATH,
-                    "//h2[contains(text(), 'Додаткова освіта та сертифікати')]",
+                    (
+                        "//h2[contains(text(), "
+                        "'Додаткова освіта та сертифікати')]"
+                    ),
                 )
             except NoSuchElementException:
                 try:
@@ -264,7 +273,7 @@ class WorkUaParser(AbstractResumeParser):
                             year=years,
                         )
                     )
-        except NoSuchElementException:
+        except (ValueError, NoSuchElementException):
             educations = []
 
         return educations
@@ -297,14 +306,21 @@ class WorkUaParser(AbstractResumeParser):
 
             experience = self.parse_experiences()
 
-            experience_years = sum(exp.years for exp in experience)
+            experience_years = round(sum(exp.years for exp in experience), 1)
 
             education = self.parse_education()
 
-            skills = self.driver.find_element(
-                By.XPATH,
-                "//div[@class='card wordwrap mt-0']//ul[@class='list-unstyled my-0 flex flex-wrap']",
-            ).text.split("\n")
+            try:
+                skills = self.driver.find_element(
+                    By.XPATH,
+                    (
+                        "//div[@class='card wordwrap mt-0']//ul"
+                        "[@class='list-unstyled my-0 flex flex-wrap']"
+                    ),
+                ).text.split("\n")
+
+            except NoSuchElementException:
+                skills = None
 
             languages = self.parse_language()
 
@@ -345,7 +361,10 @@ class WorkUaParser(AbstractResumeParser):
 
             resume_cards = self.driver.find_elements(
                 By.CSS_SELECTOR,
-                "div.card.card-hover.card-search.resume-link.card-visited.wordwrap",
+                (
+                    "div.card.card-hover.card-search."
+                    "resume-link.card-visited.wordwrap",
+                ),
             )
 
             resume_links = [
@@ -354,7 +373,10 @@ class WorkUaParser(AbstractResumeParser):
             ]
 
             for resume_link in resume_links:
+
                 resume = self.parse_single_resume(resume_link)
+
+                resume.score = calculate_resume_score(resume)
 
                 if resume:
                     resumes.append(resume)
@@ -372,36 +394,36 @@ class WorkUaParser(AbstractResumeParser):
         salary_to: Optional[WorkUaSalary] = None,
         no_salary: bool = False,
         experience: List[WorkUaExperience] = None,
-        publication_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+        public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
     ) -> str:
         position_url = quote(position.replace(" ", "-").lower())
 
         if city == WorkUaCity.ALL_UKRAINE:
             base_url = f"{self.BASE_URL}-{position_url}/"
         else:
-            base_url = f"{self.BASE_URL}-{city.value}-{position_url}/"
+            base_url = f"{self.BASE_URL}-{city.filter}-{position_url}/"
 
         params = {}
 
         if search_type != WorkUaSearchType.DEFAULT:
             params.update(
-                dict(item.split("=") for item in search_type.value.split("&"))
+                dict(item.split("=") for item in search_type.filter.split("&"))
             )
 
         if salary_from:
-            params["salaryfrom"] = salary_from.value
+            params["salaryfrom"] = salary_from.filter
         if salary_to:
-            params["salaryto"] = salary_to.value
+            params["salaryto"] = salary_to.filter
         if no_salary:
             params["nosalary"] = 1
 
         if experience:
             params["experience"] = "+".join(
-                str(exp.value) for exp in experience
+                str(exp.filter) for exp in experience
             )
 
-        if publication_period != WorkUaPostingPeriod.THREE_MONTHS:
-            params["period"] = publication_period.value
+        if public_period != WorkUaPostingPeriod.THREE_MONTHS:
+            params["period"] = public_period.filter
 
         if params:
             return f"{base_url}?{urlencode(params, safe='+')}"
@@ -417,7 +439,7 @@ class WorkUaParser(AbstractResumeParser):
         salary_to: Optional[WorkUaSalary] = None,
         no_salary: bool = False,
         experience: List[WorkUaExperience] = None,
-        publication_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+        public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
         url = self.build_url(
             position,
@@ -427,14 +449,15 @@ class WorkUaParser(AbstractResumeParser):
             salary_to,
             no_salary,
             experience,
-            publication_period,
+            public_period,
         )
 
+        print(url)
         resumes = self.parse_single_page(url)
 
         while True:
             next_url = self.get_next_page_url(url)
-
+            print(next_url)
             if next_url:
                 resumes.extend(self.parse_single_page(next_url))
             else:

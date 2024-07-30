@@ -5,37 +5,35 @@ from typing import List, Optional
 from urllib.parse import quote, urlencode
 
 from dotenv import load_dotenv
-from selenium import webdriver
 from selenium.common import (
     NoSuchElementException,
     StaleElementReferenceException,
     TimeoutException,
 )
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from abstract_parser import AbstractResumeParser
+from parser.abstract_parser import AbstractResumeParser
 from logging_config import setup_logging
-from resume_types import (
+from parser.resume_types import (
     Resume,
     Experience,
     Education,
     Language,
 )
-from robota_ua.utils import (
+from parser.robota_ua.utils import (
     RobotaSearchType,
     RobotaCity,
     RobotaExperienceLevel,
     RobotaPostingPeriod,
 )
-from utils import convert_salary, convert_experience
+from parser.relevance import calculate_resume_score
+from parser.utils import convert_salary, convert_experience
 
 load_dotenv()
-USERNAME = os.getenv("USERNAME")
+EMAIL = os.getenv("EMAIL")
 PASSWORD = os.getenv("PASSWORD")
 
 setup_logging("robota_ua_parser.log")
@@ -45,24 +43,20 @@ class RobotaUaParser(AbstractResumeParser):
     BASE_URL = "https://robota.ua/candidates/"
 
     def __init__(self):
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        self.driver = webdriver.Chrome(
-            service=ChromeService(), options=chrome_options
-        )
-        self.login(username=USERNAME, password=PASSWORD)
+        super().__init__()
+        self.login(email=EMAIL, password=PASSWORD)
 
     def __del__(self):
         self.driver.quit()
 
-    def login(self, username, password):
+    def login(self, email, password):
 
         self.driver.get("https://robota.ua/auth/login")
 
         WebDriverWait(self.driver, 10).until(
             EC.presence_of_element_located((By.ID, "otp-username"))
         )
-        self.driver.find_element(By.ID, "otp-username").send_keys(username)
+        self.driver.find_element(By.ID, "otp-username").send_keys(email)
 
         self.driver.find_element(
             By.XPATH, '//*[contains(@id, "santa-input-")]'
@@ -70,7 +64,10 @@ class RobotaUaParser(AbstractResumeParser):
 
         self.driver.find_element(
             By.CSS_SELECTOR,
-            "button.primary-large.santa-block.santa-typo-regular-bold.full-width",
+            (
+                "button.primary-large.santa-block."
+                "santa-typo-regular-bold.full-width"
+            ),
         ).click()
 
         WebDriverWait(self.driver, 10).until(
@@ -79,7 +76,9 @@ class RobotaUaParser(AbstractResumeParser):
             )
         )
 
-    def get_next_page_url(self) -> Optional[str]:
+    def get_next_page_url(self, url: str) -> Optional[str]:
+        self.driver.get(url)
+
         try:
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located(
@@ -117,7 +116,8 @@ class RobotaUaParser(AbstractResumeParser):
             logging.error("Timeout waiting for pagination elements to load")
         except Exception as e:
             logging.error(
-                f"An error occurred while trying to find the next page URL: {e}"
+                "An error occurred while trying "
+                f"to find the next page URL: {e}"
             )
 
         return None
@@ -145,7 +145,10 @@ class RobotaUaParser(AbstractResumeParser):
         )
         level = self.get_element_text(
             By.CSS_SELECTOR,
-            "p.santa-typo-regular.santa-text-black-700.santa-whitespace-nowrap.santa-sentence-case",
+            (
+                "p.santa-typo-regular.santa-text-black-700."
+                "santa-whitespace-nowrap.santa-sentence-case"
+            ),
             element=element,
         )
 
@@ -157,7 +160,10 @@ class RobotaUaParser(AbstractResumeParser):
     def parse_experiences(self, job_element: WebElement) -> Experience:
         position = self.get_element_text(
             By.CSS_SELECTOR,
-            "h4.santa-typo-regular-bold.santa-text-black-700.santa-sentence-case.santa-mb-20",
+            (
+                "h4.santa-typo-regular-bold.santa-text-black-700."
+                "santa-sentence-case.santa-mb-20"
+            ),
             element=job_element,
         )
         company_name = self.get_element_text(
@@ -179,8 +185,10 @@ class RobotaUaParser(AbstractResumeParser):
         description = self.get_element_text(
             By.XPATH,
             (
-                '//*[contains(@class, "santa-pt-20") and contains(@class, "700:santa-pt-10")'
-                ' and contains(@class, "santa-typo-regular") and contains(@class, "santa-break-words")'
+                '//*[contains(@class, "santa-pt-20")'
+                ' and contains(@class, "700:santa-pt-10")'
+                ' and contains(@class, "santa-typo-regular")'
+                ' and contains(@class, "santa-break-words")'
                 ' and contains(@class, "santa-list")]'
             ),
             element=job_element,
@@ -209,7 +217,10 @@ class RobotaUaParser(AbstractResumeParser):
 
         location, year = self.get_element_text(
             By.CSS_SELECTOR,
-            "p.santa-typo-regular.santa-text-black-700.santa-list.santa-sentence-case",
+            (
+                "p.santa-typo-regular.santa-text-black-700."
+                "santa-list.santa-sentence-case"
+            ),
             element=education,
         ).split(", ")
 
@@ -245,7 +256,6 @@ class RobotaUaParser(AbstractResumeParser):
                 By.CSS_SELECTOR,
                 "span.santa-text-red-500.santa-whitespace-nowrap",
             )
-
             experience_years = convert_experience(experience_general)
 
             experience = [
@@ -254,20 +264,25 @@ class RobotaUaParser(AbstractResumeParser):
                     By.CSS_SELECTOR, "div.santa-mt-20.santa-mb-20"
                 )
             ]
+
             try:
                 education_section = self.driver.find_element(
                     By.XPATH,
                     (
-                        "/html/body/app-root/div/alliance-cv-detail-page/main/alliance-employer-cvdb-resume/"
-                        "div/article/div/alliance-employer-cvdb-desktop-resume-content/div/"
-                        "div[1]/alliance-employer-resume-prof-info/div/alliance-shared-ui-prof-resume-education/section"
+                        "/html/body/app-root/div/alliance-cv-detail-"
+                        "page/main/alliance-employer-cvdb-resume/"
+                        "div/article/div/alliance-employer-cvdb-"
+                        "desktop-resume-content/div/"
+                        "div[1]/alliance-employer-resume-prof-"
+                        "info/div/alliance-shared-ui-prof-"
+                        "resume-education/section"
                     ),
                 )
             except (
                 NoSuchElementException,
                 StaleElementReferenceException,
             ) as e:
-                logging.info(f"No education section found in resume: {url}")
+                logging.info(f"No education section found in resume: {url}{e}")
                 education_section = None
 
             if education_section:
@@ -295,7 +310,10 @@ class RobotaUaParser(AbstractResumeParser):
 
             location = self.get_element_text(
                 By.CSS_SELECTOR,
-                "div.santa-flex.santa-items-start.santa-justify-start.santa-mb-10",
+                (
+                    "div.santa-flex.santa-items-start."
+                    "santa-justify-start.santa-mb-10"
+                ),
             )
 
             salary_element = self.get_element_text(
@@ -345,7 +363,11 @@ class RobotaUaParser(AbstractResumeParser):
             ]
 
             for resume_link in resume_links:
+
                 resume = self.parse_single_resume(resume_link)
+
+                resume.score = calculate_resume_score(resume)
+
                 if resume:
                     resumes.append(resume)
 
@@ -370,12 +392,12 @@ class RobotaUaParser(AbstractResumeParser):
             if position != "all"
             else "all"
         )
-        base_url = f"{self.BASE_URL}{position_url}/{city.value}"
+        base_url = f"{self.BASE_URL}{position_url}/{city.filter}"
 
         params = {}
 
         if search_type != RobotaSearchType.SYNONYMS:
-            params["searchType"] = json.dumps(search_type.value)
+            params["searchType"] = json.dumps(search_type.filter)
 
         if with_photo:
             params["withPhoto"] = "true"
@@ -389,11 +411,11 @@ class RobotaUaParser(AbstractResumeParser):
 
         if experience_levels is not None:
             params["experienceIds"] = json.dumps(
-                [level.value for level in experience_levels]
+                [level.filter for level in experience_levels]
             )
 
         if posting_period != RobotaPostingPeriod.THREE_MONTHS:
-            params["period"] = json.dumps(posting_period.value)
+            params["period"] = json.dumps(posting_period.filter)
 
         return f"{base_url}?{urlencode(params)}" if params else base_url
 
@@ -406,7 +428,7 @@ class RobotaUaParser(AbstractResumeParser):
         salary_from: Optional[int] = None,
         salary_to: Optional[int] = None,
         experience: Optional[List[RobotaExperienceLevel]] = None,
-        publication_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+        public_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
 
         url = self.build_url(
@@ -417,14 +439,13 @@ class RobotaUaParser(AbstractResumeParser):
             salary_from,
             salary_to,
             experience,
-            publication_period,
+            public_period,
         )
 
         resumes = self.parse_single_page(url)
 
         while True:
-            self.driver.get(url)
-            url = self.get_next_page_url()
+            url = self.get_next_page_url(url)
 
             if url:
                 resumes.extend(self.parse_single_page(url))
