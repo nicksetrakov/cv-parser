@@ -38,3 +38,4 @@ class Resume:
     salary: Optional[float]
     languages: Optional[List[Language]]
     url: str
+    score: Optional[float] = None
