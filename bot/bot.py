@@ -1,14 +1,11 @@
-import asyncio
 import logging
 import os
-import sys
-from os import getenv
-from typing import Optional, List
+from typing import List
 
-from aiogram import Bot, Dispatcher, F, Router, html
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -19,10 +16,17 @@ from aiogram.types import (
 )
 from dotenv import load_dotenv
 
-from parser_factory import ResumeParserFactory
-from robota_ua.utils import RobotaCity, RobotaSearchType, RobotaExperienceLevel, RobotaPostingPeriod
-from work_ua.work_ua_parser import (
-    WorkUaParser,
+from db import save_resumes_to_db, get_top_resumes
+from parser.parser_factory import ResumeParserFactory
+from parser.resume_types import Resume
+from parser.robota_ua.utils import (
+    RobotaCity,
+    RobotaSearchType,
+    RobotaExperienceLevel,
+    RobotaPostingPeriod,
+)
+from utils import format_resume
+from parser.work_ua.utils import (
     WorkUaCity,
     WorkUaSearchType,
     WorkUaSalary,
@@ -104,13 +108,14 @@ async def show_city_options(message: Message, state: FSMContext) -> None:
 
     buttons = [
         InlineKeyboardButton(
-            text=city.ukraine, callback_data=f"city_{city.ukraine}_{city.filter}"
+            text=city.ukraine,
+            callback_data=f"city_{city.ukraine}_{city.filter}",
         )
         for city in city_enum
     ]
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть місто:", reply_markup=keyboard)
 
@@ -127,7 +132,7 @@ async def set_city(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def show_search_type_options(
-        message: Message, state: FSMContext
+    message: Message, state: FSMContext
 ) -> None:
     data = await state.get_data()
     platform = data.get("platform")
@@ -140,13 +145,15 @@ async def show_search_type_options(
     buttons = [
         InlineKeyboardButton(
             text=f"{search_type.ukraine}",
-            callback_data=f"search_type_{search_type.ukraine}_{search_type.filter}",
+            callback_data=(
+                f"search_type_{search_type.ukraine}_{search_type.filter}"
+            ),
         )
         for search_type in search_type_enum
     ]
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть тип пошуку:", reply_markup=keyboard)
 
@@ -159,46 +166,54 @@ async def set_search_type(callback: CallbackQuery, state: FSMContext) -> None:
     platform = data.get("platform")
 
     _, _, search_type_ukraine, search_type = callback.data.split("_")
-    await state.update_data(search_type=search_type, search_type_ukraine=search_type_ukraine)
-    await callback.message.edit_text(f"Тип пошуку вибраний: {search_type_ukraine}")
+    await state.update_data(
+        search_type=search_type, search_type_ukraine=search_type_ukraine
+    )
+    await callback.message.edit_text(
+        f"Тип пошуку вибраний: {search_type_ukraine}"
+    )
     await state.set_state(ResumeForm.choosing_salary_from)
     if platform == "robota.ua":
-        await callback.message.answer(
-            "Введіть 'від' в грн (наприклад, 1000):"
-        )
+        await callback.message.answer("Введіть 'від' в грн (наприклад, 1000):")
     else:
         await show_salary_from_options(callback.message, state)
 
 
-async def show_salary_from_options(message: Message, state: FSMContext) -> None:
+async def show_salary_from_options(
+    message: Message, state: FSMContext
+) -> None:
     buttons = [
         InlineKeyboardButton(
             text=salary.ukraine,
-            callback_data=f"from_{salary.ukraine}_{salary.filter}"
+            callback_data=f"from_{salary.ukraine}_{salary.filter}",
         )
         for salary in WorkUaSalary
     ]
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть зарплату 'від'", reply_markup=keyboard)
 
 
 @resume_router.message(ResumeForm.choosing_salary_from)
-async def set_salary_from_rabota_ua(message: Message, state: FSMContext) -> None:
+async def set_salary_from_rabota_ua(
+    message: Message, state: FSMContext
+) -> None:
     salary_from = message.text
     await state.update_data(salary_from=salary_from)
     await state.set_state(ResumeForm.choosing_salary_to)
 
-    await message.answer(
-        "Введіть 'до' в грн (наприклад, 50000):"
-    )
+    await message.answer("Введіть 'до' в грн (наприклад, 50000):")
 
 
-@resume_router.callback_query(ResumeForm.choosing_salary_from, F.data.startswith("from_"))
+@resume_router.callback_query(
+    ResumeForm.choosing_salary_from, F.data.startswith("from_")
+)
 async def set_salary_from_work_ua(callback: CallbackQuery, state: FSMContext):
     _, salary_from_ukraine, salary_from = callback.data.split("_")
-    await state.update_data(salary_from=int(salary_from), salary_from_ukraine=salary_from_ukraine)
+    await state.update_data(
+        salary_from=int(salary_from), salary_from_ukraine=salary_from_ukraine
+    )
     await state.set_state(ResumeForm.choosing_salary_to)
     await show_salary_to_options(callback.message, state)
 
@@ -216,20 +231,24 @@ async def show_salary_to_options(message: Message, state: FSMContext) -> None:
     buttons = [
         InlineKeyboardButton(
             text=salary.ukraine,
-            callback_data=f"to_{salary.ukraine}_{salary.filter}"
+            callback_data=f"to_{salary.ukraine}_{salary.filter}",
         )
         for salary in WorkUaSalary
     ]
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть зарплату 'до'", reply_markup=keyboard)
 
 
-@resume_router.callback_query(ResumeForm.choosing_salary_to, F.data.startswith("to_"))
-async def set_salary_from_work_ua(callback: CallbackQuery, state: FSMContext):
+@resume_router.callback_query(
+    ResumeForm.choosing_salary_to, F.data.startswith("to_")
+)
+async def set_salary_to_work_ua(callback: CallbackQuery, state: FSMContext):
     _, salary_to_ukraine, salary_to = callback.data.split("_")
-    await state.update_data(salary_to=int(salary_to), salary_to_ukraine=salary_to_ukraine)
+    await state.update_data(
+        salary_to=int(salary_to), salary_to_ukraine=salary_to_ukraine
+    )
 
     await state.set_state(ResumeForm.choosing_experience)
     await show_experience_options(callback.message, state)
@@ -247,13 +266,15 @@ async def show_experience_options(message: Message, state: FSMContext) -> None:
     buttons = [
         InlineKeyboardButton(
             text=f"{experience.ukraine}",
-            callback_data=f"experience_{experience.ukraine}_{experience.filter}",
+            callback_data=(
+                f"experience_{experience.ukraine}_{experience.filter}"
+            ),
         )
         for experience in experience_enum
     ]
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть рівень досвіду:", reply_markup=keyboard)
 
@@ -263,14 +284,16 @@ async def show_experience_options(message: Message, state: FSMContext) -> None:
 )
 async def set_experience(callback: CallbackQuery, state: FSMContext) -> None:
     _, experience_ukraine, experience = callback.data.split("_")
-    await state.update_data(experience=experience, experience_ukraine=experience_ukraine)
+    await state.update_data(
+        experience=experience, experience_ukraine=experience_ukraine
+    )
     await callback.message.edit_text(f"Досвід обраний: {experience_ukraine}")
     await state.set_state(ResumeForm.choosing_publication_period)
     await show_publication_period_options(callback.message, state)
 
 
 async def show_publication_period_options(
-        message: Message, state: FSMContext
+    message: Message, state: FSMContext
 ) -> None:
     data = await state.get_data()
     platform = data.get("platform")
@@ -283,13 +306,15 @@ async def show_publication_period_options(
     buttons = [
         InlineKeyboardButton(
             text=f"{period.ukraine}",
-            callback_data=f"publication_period_{period.ukraine}_{period.filter}",
+            callback_data=(
+                f"publication_period_{period.ukraine}_{period.filter}"
+            ),
         )
         for period in period_enum
     ]
 
     keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)]
+        inline_keyboard=[buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     )
     await message.answer("Виберіть період публікації:", reply_markup=keyboard)
 
@@ -302,8 +327,12 @@ async def set_publication_period(
     callback: CallbackQuery, state: FSMContext
 ) -> None:
     _, _, period_ukraine, period = callback.data.split("_")
-    await state.update_data(publication_period=period, publication_period_ukraine=period_ukraine)
-    await callback.message.edit_text(f"Період публікації обрано: {period_ukraine}")
+    await state.update_data(
+        publication_period=period, publication_period_ukraine=period_ukraine
+    )
+    await callback.message.edit_text(
+        f"Період публікації обрано: {period_ukraine}"
+    )
     await state.set_state(ResumeForm.confirming_filters)
     await show_filters_summary(callback.message, state)
 
@@ -372,39 +401,83 @@ async def parse_resumes(message: Message, state: FSMContext) -> None:
     platform = data.get("platform")
     position = data.get("position")
     if platform == "work.ua":
-        city = next(exp for exp in WorkUaCity if exp.value[0] == data.get("city"))
-        search_type = next(exp for exp in WorkUaSearchType if exp.value[0] == data.get("search_type"))
-        salary_from = next(exp for exp in WorkUaSalary if exp.value[0] == data.get("salary_from"))
-        salary_to = next(exp for exp in WorkUaSalary if exp.value[0] == data.get("salary_to"))
-        experience = next(exp for exp in WorkUaExperience if exp.value[0] == int(data.get("experience")))
-        period_data = data.get("publication_period")
+        city = next(
+            exp for exp in WorkUaCity if exp.value[0] == data.get("city")
+        )
+        search_type = next(
+            exp
+            for exp in WorkUaSearchType
+            if exp.value[0] == data.get("search_type")
+        )
+        salary_from = next(
+            exp
+            for exp in WorkUaSalary
+            if exp.value[0] == data.get("salary_from")
+        )
+        salary_to = next(
+            exp
+            for exp in WorkUaSalary
+            if exp.value[0] == data.get("salary_to")
+        )
+        experience = next(
+            exp
+            for exp in WorkUaExperience
+            if exp.value[0] == int(data.get("experience"))
+        )
+        period_data = data.get("public_period")
         try:
             period_data = int(period_data)
         except ValueError:
             period_data = None
-        publication_period = next(exp for exp in WorkUaPostingPeriod if exp.value[0] == period_data)
+        publication_period = next(
+            exp for exp in WorkUaPostingPeriod if exp.value[0] == period_data
+        )
     else:
-        city = next(exp for exp in RobotaCity if exp.value[0] == data.get("city"))
-        search_type = next(exp for exp in RobotaSearchType if exp.value[0] == data.get("search_type"))
+        city = next(
+            exp for exp in RobotaCity if exp.value[0] == data.get("city")
+        )
+        search_type = next(
+            exp
+            for exp in RobotaSearchType
+            if exp.value[0] == data.get("search_type")
+        )
         salary_from = data.get("salary_from")
         salary_to = data.get("salary_to")
-        experience = next(exp for exp in RobotaExperienceLevel if exp.value[0] == data.get("experience"))
-        publication_period = next(exp for exp in RobotaPostingPeriod if exp.value[0] == data.get("publication_period"))
+        experience = next(
+            exp
+            for exp in RobotaExperienceLevel
+            if exp.value[0] == data.get("experience")
+        )
+        publication_period = next(
+            exp
+            for exp in RobotaPostingPeriod
+            if exp.value[0] == data.get("public_period")
+        )
 
     parser = ResumeParserFactory.get_parser(platform)
 
-    parser.parse_resumes(
+    resumes = parser.parse_resumes(
         position=position,
         city=city,
         search_type=search_type,
         salary_from=salary_from,
         salary_to=salary_to,
         experience=[experience],
-        publication_period=publication_period,
+        public_period=publication_period,
     )
-
+    save_resumes_to_db(resumes)
     await state.clear()
-    await message.answer("Парсинг завершено.")
+    await message.answer("Парсинг завершено. Виводжу топ-10 резюме:")
+    await display_top_resumes(message, resumes)
+
+
+async def display_top_resumes(
+    message: Message, resumes: List[Resume], limit: int = 10
+):
+    top_resumes = get_top_resumes(limit)
+    for i, resume in enumerate(top_resumes, 1):
+        formatted_resume = format_resume(resume)
+        await message.answer(f"Резюме #{i}\n\n{formatted_resume}")
 
 
 def main() -> None:
@@ -415,6 +488,7 @@ def main() -> None:
     bot = Bot(
         token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
+
     dp.run_polling(bot, skip_updates=True)
 
 
