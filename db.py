@@ -162,10 +162,9 @@ def get_top_resumes(
     conn = sqlite3.connect(db_path)
     conn.row_factory = (
         sqlite3.Row
-    )  # Це дозволить нам звертатися до колонок за назвою
+    )
     cursor = conn.cursor()
 
-    # Отримуємо основну інформацію про резюме
     cursor.execute(
         """
         SELECT * FROM resumes
@@ -216,7 +215,6 @@ def get_top_resumes(
             for lang in language_rows
         ]
 
-        # Створюємо об'єкт Resume
         resume = Resume(
             full_name=row["full_name"],
             position=row["position"],
