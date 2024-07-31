@@ -106,7 +106,7 @@ class RobotaUaParser(AbstractResumeParser):
                     break
 
             if current_page is not None and current_page + 1 < len(
-                pagination_elements
+                    pagination_elements
             ):
                 return pagination_elements[current_page + 1].get_attribute(
                     "href"
@@ -123,11 +123,11 @@ class RobotaUaParser(AbstractResumeParser):
         return None
 
     def get_element_text(
-        self,
-        by: By,
-        value: str,
-        element: Optional[WebElement] = None,
-        default: Optional[str] = None,
+            self,
+            by: By,
+            value: str,
+            element: Optional[WebElement] = None,
+            default: Optional[str] = None,
     ) -> str:
         try:
             if element:
@@ -179,9 +179,10 @@ class RobotaUaParser(AbstractResumeParser):
 
         period = self.get_element_text(
             By.CSS_SELECTOR,
-            "span.santa-whitespace-nowrap",
+            "p.santa-typo-regular.santa-text-black-700.santa-mr-10",
             element=job_element,
         )
+
         description = self.get_element_text(
             By.XPATH,
             (
@@ -279,10 +280,12 @@ class RobotaUaParser(AbstractResumeParser):
                     ),
                 )
             except (
-                NoSuchElementException,
-                StaleElementReferenceException,
+                    NoSuchElementException,
+                    StaleElementReferenceException,
             ) as e:
-                logging.info(f"No education section found in resume: {url}{e}")
+                logging.info(
+                    f"No education section found in resume: {url}\n{e}"
+                )
                 education_section = None
 
             if education_section:
@@ -376,15 +379,15 @@ class RobotaUaParser(AbstractResumeParser):
         return resumes
 
     def build_url(
-        self,
-        position: str,
-        search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
-        city: RobotaCity = RobotaCity.ALL_UKRAINE,
-        with_photo: bool = False,
-        salary_from: Optional[int] = None,
-        salary_to: Optional[int] = None,
-        experience_levels: Optional[List[RobotaExperienceLevel]] = None,
-        posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+            self,
+            position: str,
+            search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
+            city: RobotaCity = RobotaCity.ALL_UKRAINE,
+            with_photo: bool = False,
+            salary_from: Optional[int] = None,
+            salary_to: Optional[int] = None,
+            experience_levels: Optional[List[RobotaExperienceLevel]] = None,
+            posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> str:
 
         position_url = (
@@ -420,15 +423,15 @@ class RobotaUaParser(AbstractResumeParser):
         return f"{base_url}?{urlencode(params)}" if params else base_url
 
     def parse_resumes(
-        self,
-        position: str,
-        search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
-        city: RobotaCity = RobotaCity.ALL_UKRAINE,
-        with_photo: bool = False,
-        salary_from: Optional[int] = None,
-        salary_to: Optional[int] = None,
-        experience: Optional[List[RobotaExperienceLevel]] = None,
-        public_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+            self,
+            position: str,
+            search_type: RobotaSearchType = RobotaSearchType.SYNONYMS,
+            city: RobotaCity = RobotaCity.ALL_UKRAINE,
+            with_photo: bool = False,
+            salary_from: Optional[int] = None,
+            salary_to: Optional[int] = None,
+            experience: Optional[List[RobotaExperienceLevel]] = None,
+            public_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
 
         url = self.build_url(

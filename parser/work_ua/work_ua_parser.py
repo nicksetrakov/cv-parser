@@ -48,30 +48,40 @@ class WorkUaParser(AbstractResumeParser):
                     (By.CSS_SELECTOR, "a.link-icon")
                 )
             )
+            try:
+                disabled_next_button = self.driver.find_element(
+                    By.CSS_SELECTOR,
+                    "li.no-style.disabled.add-left-default"
+                )
+            except NoSuchElementException:
+                disabled_next_button = None
 
             next_button = self.driver.find_element(
                 By.CSS_SELECTOR, "a.link-icon"
             )
 
-            if next_button.text == "Наступна":
+            if disabled_next_button is None and next_button.text == "Наступна":
                 return next_button.get_attribute("href")
+
+            return None
 
         except TimeoutException:
             logging.error("Timeout waiting for pagination elements to load")
+
+            return None
         except Exception as e:
             logging.error(
                 "An error occurred while trying "
                 f"to find the next page URL: {e}"
             )
-
-        return None
+            return None
 
     def get_element_text(
-        self,
-        by: By,
-        value: str,
-        element: Optional[WebElement] = None,
-        default: Optional[str] = None,
+            self,
+            by: By,
+            value: str,
+            element: Optional[WebElement] = None,
+            default: Optional[str] = None,
     ) -> str:
 
         try:
@@ -363,7 +373,7 @@ class WorkUaParser(AbstractResumeParser):
                 By.CSS_SELECTOR,
                 (
                     "div.card.card-hover.card-search."
-                    "resume-link.card-visited.wordwrap",
+                    "resume-link.card-visited.wordwrap"
                 ),
             )
 
@@ -386,15 +396,15 @@ class WorkUaParser(AbstractResumeParser):
         return resumes
 
     def build_url(
-        self,
-        position: str,
-        city: WorkUaCity = WorkUaCity.ALL_UKRAINE,
-        search_type: WorkUaSearchType = WorkUaSearchType.DEFAULT,
-        salary_from: Optional[WorkUaSalary] = None,
-        salary_to: Optional[WorkUaSalary] = None,
-        no_salary: bool = False,
-        experience: List[WorkUaExperience] = None,
-        public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+            self,
+            position: str,
+            city: WorkUaCity = WorkUaCity.ALL_UKRAINE,
+            search_type: WorkUaSearchType = WorkUaSearchType.DEFAULT,
+            salary_from: Optional[WorkUaSalary] = None,
+            salary_to: Optional[WorkUaSalary] = None,
+            no_salary: bool = False,
+            experience: List[WorkUaExperience] = None,
+            public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
     ) -> str:
         position_url = quote(position.replace(" ", "-").lower())
 
@@ -423,6 +433,7 @@ class WorkUaParser(AbstractResumeParser):
             )
 
         if public_period != WorkUaPostingPeriod.THREE_MONTHS:
+
             params["period"] = public_period.filter
 
         if params:
@@ -431,15 +442,15 @@ class WorkUaParser(AbstractResumeParser):
             return base_url
 
     def parse_resumes(
-        self,
-        position: str,
-        city: WorkUaCity = WorkUaCity.ALL_UKRAINE,
-        search_type: WorkUaSearchType = WorkUaSearchType.DEFAULT,
-        salary_from: Optional[WorkUaSalary] = None,
-        salary_to: Optional[WorkUaSalary] = None,
-        no_salary: bool = False,
-        experience: List[WorkUaExperience] = None,
-        public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+            self,
+            position: str,
+            city: WorkUaCity = WorkUaCity.ALL_UKRAINE,
+            search_type: WorkUaSearchType = WorkUaSearchType.DEFAULT,
+            salary_from: Optional[WorkUaSalary] = None,
+            salary_to: Optional[WorkUaSalary] = None,
+            no_salary: bool = False,
+            experience: List[WorkUaExperience] = None,
+            public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
     ) -> List[Resume]:
         url = self.build_url(
             position,
@@ -452,14 +463,13 @@ class WorkUaParser(AbstractResumeParser):
             public_period,
         )
 
-        print(url)
         resumes = self.parse_single_page(url)
 
         while True:
-            next_url = self.get_next_page_url(url)
-            print(next_url)
-            if next_url:
-                resumes.extend(self.parse_single_page(next_url))
+            url = self.get_next_page_url(url)
+
+            if url:
+                resumes.extend(self.parse_single_page(url))
             else:
                 break
 

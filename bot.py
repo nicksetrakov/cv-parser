@@ -32,7 +32,7 @@ from parser.work_ua.utils import (
     WorkUaExperience,
     WorkUaPostingPeriod,
 )
-from utils import format_resume
+from format_resume import format_resume
 
 load_dotenv()
 
@@ -49,7 +49,7 @@ class ResumeForm(StatesGroup):
     choosing_salary_from = State()
     choosing_salary_to = State()
     choosing_experience = State()
-    choosing_publication_period = State()
+    choosing_public_period = State()
     confirming_filters = State()
     parsing = State()
 
@@ -288,11 +288,11 @@ async def set_experience(callback: CallbackQuery, state: FSMContext) -> None:
         experience=experience, experience_ukraine=experience_ukraine
     )
     await callback.message.edit_text(f"Досвід обраний: {experience_ukraine}")
-    await state.set_state(ResumeForm.choosing_publication_period)
-    await show_publication_period_options(callback.message, state)
+    await state.set_state(ResumeForm.choosing_public_period)
+    await show_public_period_options(callback.message, state)
 
 
-async def show_publication_period_options(
+async def show_public_period_options(
     message: Message, state: FSMContext
 ) -> None:
     data = await state.get_data()
@@ -307,7 +307,7 @@ async def show_publication_period_options(
         InlineKeyboardButton(
             text=f"{period.ukraine}",
             callback_data=(
-                f"publication_period_{period.ukraine}_{period.filter}"
+                f"public_period_{period.ukraine}_{period.filter}"
             ),
         )
         for period in period_enum
@@ -320,15 +320,15 @@ async def show_publication_period_options(
 
 
 @resume_router.callback_query(
-    ResumeForm.choosing_publication_period,
-    F.data.startswith("publication_period_"),
+    ResumeForm.choosing_public_period,
+    F.data.startswith("public_period_"),
 )
-async def set_publication_period(
+async def set_public_period(
     callback: CallbackQuery, state: FSMContext
 ) -> None:
     _, _, period_ukraine, period = callback.data.split("_")
     await state.update_data(
-        publication_period=period, publication_period_ukraine=period_ukraine
+        public_period=period, public_period_ukraine=period_ukraine
     )
     await callback.message.edit_text(
         f"Період публікації обрано: {period_ukraine}"
@@ -355,7 +355,7 @@ async def show_filters_summary(message: Message, state: FSMContext) -> None:
         f"Тип пошуку: {data.get('search_type_ukraine')}\n"
         f"Зарплата: від {salary_from} до {salary_to}\n"
         f"Досвід: {data.get('experience_ukraine')}\n"
-        f"Період публикації: {data.get('publication_period_ukraine')}"
+        f"Період публикації: {data.get('public_period_ukraine')}"
     )
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -427,9 +427,10 @@ async def parse_resumes(message: Message, state: FSMContext) -> None:
         period_data = data.get("public_period")
         try:
             period_data = int(period_data)
-        except ValueError:
+        except (ValueError, TypeError):
             period_data = None
-        publication_period = next(
+
+        public_period = next(
             exp for exp in WorkUaPostingPeriod if exp.value[0] == period_data
         )
     else:
@@ -448,7 +449,7 @@ async def parse_resumes(message: Message, state: FSMContext) -> None:
             for exp in RobotaExperienceLevel
             if exp.value[0] == data.get("experience")
         )
-        publication_period = next(
+        public_period = next(
             exp
             for exp in RobotaPostingPeriod
             if exp.value[0] == data.get("public_period")
@@ -463,7 +464,7 @@ async def parse_resumes(message: Message, state: FSMContext) -> None:
         salary_from=salary_from,
         salary_to=salary_to,
         experience=[experience],
-        public_period=publication_period,
+        public_period=public_period,
     )
     save_resumes_to_db(resumes)
     await state.clear()

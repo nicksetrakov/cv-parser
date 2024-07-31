@@ -11,7 +11,7 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 
-from resume_types import Resume, Language, Experience, Education
+from parser.resume_types import Resume, Language, Experience, Education
 
 
 class AbstractResumeParser(ABC):
