@@ -25,6 +25,7 @@ python bot.py
 * Brought salaries to a unified format in hryvnia using exchangerate api
 * I sort candidates by their relevance depending on experience, completeness of resume and availability of skills
 * Solved the scalability problem by saving the resume to the database and adding the score field for quick sorting
+* Add logging to file and console
 
 ## Examples:
 ![cs-parser_1.jpg](cs-parser_1.jpg)
