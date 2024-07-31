@@ -1,5 +1,6 @@
 import sqlite3
 from typing import List
+
 from parser.resume_types import Resume, Experience, Education, Language
 
 

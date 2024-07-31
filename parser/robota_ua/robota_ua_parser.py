@@ -15,8 +15,9 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from parser.abstract_parser import AbstractResumeParser
 from logging_config import setup_logging
+from parser.abstract_parser import AbstractResumeParser
+from parser.relevance import calculate_resume_score
 from parser.resume_types import (
     Resume,
     Experience,
@@ -29,7 +30,6 @@ from parser.robota_ua.utils import (
     RobotaExperienceLevel,
     RobotaPostingPeriod,
 )
-from parser.relevance import calculate_resume_score
 from parser.utils import convert_salary, convert_experience
 
 load_dotenv()

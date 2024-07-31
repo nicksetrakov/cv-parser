@@ -7,9 +7,9 @@ from selenium.common import (
     StaleElementReferenceException,
 )
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.chrome.service import Service as ChromeService
 
 from resume_types import Resume, Language, Experience, Education
 

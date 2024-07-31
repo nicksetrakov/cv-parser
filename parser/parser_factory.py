@@ -1,5 +1,5 @@
-from work_ua.work_ua_parser import WorkUaParser
 from robota_ua.robota_ua_parser import RobotaUaParser
+from work_ua.work_ua_parser import WorkUaParser
 
 
 class ResumeParserFactory:
