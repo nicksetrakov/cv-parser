@@ -404,7 +404,9 @@ class WorkUaParser(AbstractResumeParser):
             salary_to: Optional[WorkUaSalary] = None,
             no_salary: bool = False,
             experience: List[WorkUaExperience] = None,
-            public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+            public_period: WorkUaPostingPeriod = (
+                WorkUaPostingPeriod.THREE_MONTHS
+            ),
     ) -> str:
         position_url = quote(position.replace(" ", "-").lower())
 
@@ -450,7 +452,9 @@ class WorkUaParser(AbstractResumeParser):
             salary_to: Optional[WorkUaSalary] = None,
             no_salary: bool = False,
             experience: List[WorkUaExperience] = None,
-            public_period: WorkUaPostingPeriod = WorkUaPostingPeriod.THREE_MONTHS,
+            public_period: WorkUaPostingPeriod = (
+                WorkUaPostingPeriod.THREE_MONTHS
+            ),
     ) -> List[Resume]:
         url = self.build_url(
             position,

@@ -387,7 +387,9 @@ class RobotaUaParser(AbstractResumeParser):
             salary_from: Optional[int] = None,
             salary_to: Optional[int] = None,
             experience_levels: Optional[List[RobotaExperienceLevel]] = None,
-            posting_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+            posting_period: RobotaPostingPeriod = (
+                RobotaPostingPeriod.THREE_MONTHS
+            ),
     ) -> str:
 
         position_url = (
@@ -431,7 +433,9 @@ class RobotaUaParser(AbstractResumeParser):
             salary_from: Optional[int] = None,
             salary_to: Optional[int] = None,
             experience: Optional[List[RobotaExperienceLevel]] = None,
-            public_period: RobotaPostingPeriod = RobotaPostingPeriod.THREE_MONTHS,
+            public_period: RobotaPostingPeriod = (
+                RobotaPostingPeriod.THREE_MONTHS
+            ),
     ) -> List[Resume]:
 
         url = self.build_url(
